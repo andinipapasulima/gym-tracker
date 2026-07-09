@@ -6,10 +6,11 @@ $pass = "";
 $db   = "gym_tracker";
 
 // Membuka koneksi ke database
-$koneksi = mysqli_connect($host, $user, $pass, $db);
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-// Periksa apakah koneksi gagal
-if (!$koneksi) {
-    die("Koneksi gagal: " . mysqli_connect_error());
+try {
+    $koneksi = mysqli_connect($host, $user, $pass, $db);
+    mysqli_set_charset($koneksi, "utf8mb4");
+} catch (mysqli_sql_exception $e) {
+    die("Koneksi database gagal. Pastikan XAMPP (MySQL) aktif dan database 'gym_tracker' sudah dibuat. Detail: " . $e->getMessage());
 }
-?>

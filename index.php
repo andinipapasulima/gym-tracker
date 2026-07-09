@@ -1,192 +1,165 @@
 <?php
-// Panggil koneksi database
 include 'koneksi.php';
+include 'includes/functions.php';
 
-// Logika untuk MENYIMPAN DATA (Create)
-if (isset($_POST['simpan'])) {
-    $tanggal = $_POST['tanggal'];
-    $gerakan = $_POST['gerakan'];
-    $beban = $_POST['beban'];
-    $repetisi = $_POST['repetisi'];
+$halaman_aktif = 'dashboard';
+$judul_halaman = 'Dashboard';
 
-    $query_insert = "INSERT INTO catatan_latihan (tanggal, gerakan, beban, repetisi) 
-                     VALUES ('$tanggal', '$gerakan', '$beban', '$repetisi')";
-    
-    mysqli_query($koneksi, $query_insert);
-    
-    // Redirect ke halaman yang sama agar form kembali kosong
-    header("Location: index.php");
-    exit;
+$ringkasan = ringkasanDashboard($koneksi);
+$streak = hitungStreak($koneksi);
+$prList = ambilPR($koneksi);
+$prTop = array_slice($prList, 0, 6);
+
+// Data 5 sesi terakhir untuk tabel ringkas
+$sesiTerakhir = mysqli_query($koneksi, "SELECT * FROM catatan_latihan ORDER BY tanggal DESC, id DESC LIMIT 6");
+
+// Data untuk chart: total volume per hari, 14 hari terakhir
+$volQuery = "SELECT tanggal, SUM(beban * sets * GREATEST(reps,1)) AS volume
+             FROM catatan_latihan
+             WHERE tanggal >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+             GROUP BY tanggal ORDER BY tanggal ASC";
+$volResult = mysqli_query($koneksi, $volQuery);
+$chartLabels = [];
+$chartData = [];
+while ($row = mysqli_fetch_assoc($volResult)) {
+    $chartLabels[] = date('d M', strtotime($row['tanggal']));
+    $chartData[] = round((float)$row['volume'], 1);
 }
+
+include 'includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WZone Gym Tracker</title>
-    <style>
-        /* CSS Dasar & Statis */
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f7f6;
-            margin: 0;
-            padding: 20px;
-            color: #333333;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        h2 {
-            text-align: center;
-            color: #2c3e50;
-            margin-bottom: 20px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #cccccc;
-            box-sizing: border-box;
-            font-size: 14px;
-        }
-        .btn-simpan {
-            width: 100%;
-            background-color: #27ae60;
-            color: #ffffff;
-            padding: 12px;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-            margin-bottom: 20px;
-        }
-        .btn-simpan:hover {
-            background-color: #219150;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #dddddd;
-            text-align: left;
-            padding: 10px;
-        }
-        th {
-            background-color: #ecf0f1;
-            color: #2c3e50;
-        }
-        .btn-hapus {
-            background-color: #e74c3c;
-            color: #ffffff;
-            padding: 5px 10px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        .btn-hapus:hover {
-            background-color: #c0392b;
-        }
-
-        .btn-edit {
-    background-color: #f39c12;
-    color: #ffffff;
-    padding: 5px 10px;
-    text-decoration: none;
-    border-radius: 4px;
-    font-size: 12px;
-}
-.btn-edit:hover {
-    background-color: #d68910;
-}
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h2>Catatan Latihan Gym 🏋️‍♀️</h2>
-    
-    <form action="" method="POST">
-        <div class="form-group">
-            <label>Tanggal:</label>
-            <input type="date" name="tanggal" required>
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="label">Sesi Bulan Ini</div>
+        <div class="value accent"><?= $ringkasan['sesi_bulan_ini'] ?></div>
+        <div class="sub">total <?= $ringkasan['total_sesi'] ?> sesi sepanjang waktu</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Streak Latihan</div>
+        <div class="value good"><?= $streak ?> <span style="font-size:16px;">hari</span></div>
+        <div class="sub"><?= $streak > 0 ? 'terus pertahankan 🔥' : 'yuk mulai lagi hari ini' ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Volume Bulan Ini</div>
+        <div class="value"><?= number_format($ringkasan['total_volume_bulan_ini'], 0, ',', '.') ?></div>
+        <div class="sub">kg (beban × set × repetisi)</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Latihan Terakhir</div>
+        <div class="value">
+            <?= $ringkasan['hari_sejak_terakhir'] === null ? '—' : ($ringkasan['hari_sejak_terakhir'] == 0 ? 'Hari ini' : $ringkasan['hari_sejak_terakhir'] . 'h') ?>
         </div>
-        <div class="form-group">
-            <label>Gerakan:</label>
-            <select name="gerakan">
-                <option value="Goblet Squat">Goblet Squat</option>
-                <option value="Push-up">Push-up</option>
-                <option value="Plank">Plank</option>
-                <option value="Lat Pulldown">Lat Pulldown</option>
-                <option value="Lunges">Lunges</option>
-                <option value="Overhead Press">Overhead Press</option>
-                <option value="Dumbbell Row">Dumbbell Row</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Beban (Kg):</label>
-            <input type="number" name="beban" placeholder="Isi 0 jika tanpa beban" required min="0">
-        </div>
-        <div class="form-group">
-            <label>Repetisi/Set:</label>
-            <input type="text" name="repetisi" placeholder="Contoh: 3x12" required>
-        </div>
-        
-        <button type="submit" name="simpan" class="btn-simpan">Simpan Latihan</button>
-    </form>
-
-    <table>
-        <thead>
-            <tr>
-                <th>Tanggal</th>
-                <th>Gerakan</th>
-                <th>Beban</th>
-                <th>Repetisi</th>
-                <th>Aksi</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php
-            // Logika untuk MENAMPILKAN DATA (Read)
-            $query_tampil = "SELECT * FROM catatan_latihan ORDER BY tanggal DESC, id DESC";
-            $hasil = mysqli_query($koneksi, $query_tampil);
-
-            if (mysqli_num_rows($hasil) > 0) {
-                while ($baris = mysqli_fetch_assoc($hasil)) {
-                    echo "<tr>";
-                    echo "<td>" . $baris['tanggal'] . "</td>";
-                    echo "<td>" . $baris['gerakan'] . "</td>";
-                    echo "<td>" . $baris['beban'] . " Kg</td>";
-                    echo "<td>" . $baris['repetisi'] . "</td>";
-                    // Tombol hapus mengirimkan ID lewat URL (Metode GET)
-                   echo "<td>
-        <a href='edit.php?id=" . $baris['id'] . "' class='btn-edit'>Edit</a> | 
-        <a href='hapus.php?id=" . $baris['id'] . "' class='btn-hapus' onclick='return confirm(\"Yakin ingin menghapus catatan ini?\")'>Hapus</a>
-      </td>";
-                }
-            } else {
-                echo "<tr><td colspan='5' style='text-align:center;'>Belum ada catatan latihan.</td></tr>";
-            }
-            ?>
-        </tbody>
-    </table>
+        <div class="sub">lalu</div>
+    </div>
 </div>
 
-</body>
-</html>
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Volume Latihan — 14 Hari Terakhir</h2>
+            <div class="desc">Total beban × set × repetisi per hari</div>
+        </div>
+    </div>
+    <?php if (empty($chartData)): ?>
+        <div class="empty-state">
+            <div class="icon">📊</div>
+            Belum ada data di 14 hari terakhir. <a href="catat.php">Catat latihan pertamamu</a>.
+        </div>
+    <?php else: ?>
+        <canvas id="volumeChart" height="90"></canvas>
+    <?php endif; ?>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Personal Records</h2>
+            <div class="desc">Beban tertinggi yang pernah kamu angkat, per gerakan</div>
+        </div>
+        <a href="progress.php" class="btn btn-outline btn-sm">Lihat Semua →</a>
+    </div>
+    <?php if (empty($prTop)): ?>
+        <div class="empty-state">
+            <div class="icon">🏆</div>
+            Belum ada PR tercatat. Mulai catat latihan untuk melihat rekor pribadimu di sini.
+        </div>
+    <?php else: ?>
+        <div class="pr-grid">
+            <?php foreach ($prTop as $pr): ?>
+                <div class="pr-item">
+                    <div class="name"><?= e($pr['gerakan']) ?></div>
+                    <div class="kat"><?= e($pr['kategori']) ?></div>
+                    <div class="weight"><?= number_format($pr['pr_beban'], 1) ?> kg</div>
+                    <div class="barbell">
+                        <div class="sleeve"></div>
+                        <?php foreach (pecahPlat($pr['pr_beban']) as $plat): ?>
+                            <div class="plate p<?= $plat['berat'] ?>" style="background: <?= $plat['warna'] ?>"></div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <h2>Aktivitas Terbaru</h2>
+        </div>
+        <a href="riwayat.php" class="btn btn-outline btn-sm">Lihat Semua →</a>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Tanggal</th><th>Gerakan</th><th>Kategori</th><th>Beban</th><th>Set × Rep</th></tr>
+            </thead>
+            <tbody>
+                <?php if (mysqli_num_rows($sesiTerakhir) === 0): ?>
+                    <tr><td colspan="5" class="empty-state">Belum ada catatan.</td></tr>
+                <?php else: while ($row = mysqli_fetch_assoc($sesiTerakhir)):
+                    [$s, $r] = parseSetsReps($row);
+                    $isPR = isset($prList[$row['gerakan']]) && (float)$prList[$row['gerakan']]['pr_beban'] === (float)$row['beban'];
+                ?>
+                    <tr>
+                        <td><?= date('d M Y', strtotime($row['tanggal'])) ?></td>
+                        <td><?= e($row['gerakan']) ?> <?php if ($isPR): ?><span class="pr-badge">★ PR</span><?php endif; ?></td>
+                        <td><span class="tag"><?= e($row['kategori'] ?? 'Lainnya') ?></span></td>
+                        <td class="mono"><?= number_format($row['beban'], 1) ?> kg</td>
+                        <td class="mono"><?= $s ?>×<?= $r ?></td>
+                    </tr>
+                <?php endwhile; endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php if (!empty($chartData)): ?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+new Chart(document.getElementById('volumeChart'), {
+    type: 'bar',
+    data: {
+        labels: <?= json_encode($chartLabels) ?>,
+        datasets: [{
+            label: 'Volume (kg)',
+            data: <?= json_encode($chartData) ?>,
+            backgroundColor: '#ff5a1f',
+            borderRadius: 4,
+            maxBarThickness: 28
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { grid: { display: false }, ticks: { color: '#8d919c' } },
+            y: { grid: { color: '#303440' }, ticks: { color: '#8d919c' } }
+        }
+    }
+});
+</script>
+<?php endif; ?>
+
+<?php include 'includes/footer.php'; ?>
